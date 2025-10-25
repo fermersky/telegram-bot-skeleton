@@ -1,0 +1,28 @@
+{
+    "name": "telegram-bot",
+    "version": "1.0.0",
+    "type": "module",
+    "engines": {
+        "node": ">=24.0.0"
+    },
+    "scripts": {
+        "dev": "tsx --env-file=.env --watch src/index.ts",
+        "build": "tsc",
+        "start": "pnpm build && pnpm pm2:restart",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "pm2:start": "pm2 start ecosystem.config.cjs",
+        "pm2:stop": "pm2 stop telegram-bot",
+        "pm2:restart": "pm2 restart telegram-bot",
+        "pm2:logs": "pm2 logs telegram-bot"
+    },
+    "dependencies": {
+        "pm2": "^5.4.2"
+    },
+    "devDependencies": {
+        "@types/node": "^24.0.0",
+        "prettier": "^3.4.2",
+        "tsx": "^4.19.2",
+        "typescript": "^5.7.2"
+    }
+}

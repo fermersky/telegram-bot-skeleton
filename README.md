@@ -48,6 +48,31 @@ Run the bot in development mode with hot reload:
 pnpm dev
 ```
 
+## Testing
+
+Run tests:
+
+```bash
+pnpm test --run        # Run once
+pnpm test              # Watch mode
+pnpm test:coverage     # With coverage report
+pnpm test:ui           # UI mode
+```
+
+### Test Coverage
+
+- **TelegramClient**: 100%
+- **StateManager**: 100%
+- **Overall target**: 80%
+
+### Testing Stack
+
+- **Vitest** - Test runner and assertions
+- **undici MockAgent** - Mocking fetch/HTTP requests
+- **vi.mock()** - Mocking file system operations
+
+See `.claude/prompts/testing.md` for detailed testing patterns and examples.
+
 ## Production
 
 Build the project:
@@ -97,6 +122,12 @@ src/
 ├── utils/
 │   └── Logger.ts          # Logging utility
 └── index.ts               # Entry point
+
+tests/
+├── core/
+│   └── TelegramClient.test.ts
+└── services/
+    └── StateManager.test.ts
 ```
 
 ## Default Commands

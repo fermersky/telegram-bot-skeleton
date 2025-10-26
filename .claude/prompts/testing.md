@@ -182,14 +182,15 @@ Let Logger output naturally during tests. This provides visibility into what's h
 
 ### Classes That Need Mocking
 
-1. **TelegramClient** - Already tested with 100% coverage
+1. **TelegramClient** - ✅ 100% coverage
    - Mock fetch using undici MockAgent
    - Test all public methods
    - Test error scenarios
 
-2. **StateManager** - File I/O operations
-   - Mock `fs/promises` methods
+2. **StateManager** - ✅ 100% coverage
+   - Mock `fs/promises` and `fs` modules
    - Test load/save/getOffset/setOffset
+   - Test file creation, directory creation, error handling
 
 3. **PollingService** - Long-running process
    - Mock TelegramClient
@@ -211,7 +212,7 @@ tests/
     TelegramClient.test.ts ✅ (100% coverage)
   services/
     PollingService.test.ts
-    StateManager.test.ts
+    StateManager.test.ts ✅ (100% coverage)
   handlers/
     CommandHandler.test.ts
     MessageHandler.test.ts
@@ -244,6 +245,7 @@ pnpm test:ui
 ## Coverage Expectations
 
 - **TelegramClient**: 100% ✅
+- **StateManager**: 100% ✅
 - **Overall target**: 80% (configured in vitest.config.ts)
 - Focus on covering:
   - All public methods
@@ -251,9 +253,11 @@ pnpm test:ui
   - Edge cases (empty arrays, null values, etc.)
   - Request/response validation
 
-## Example: TelegramClient Tests (Reference)
+## Reference Implementations
 
-See `tests/core/TelegramClient.test.ts` for a complete example of:
+### Example: TelegramClient Tests
+
+See `tests/core/TelegramClient.test.ts` for testing HTTP/fetch operations:
 - Setting up undici MockAgent
 - Testing all public methods
 - Testing error scenarios
@@ -268,6 +272,75 @@ Key test scenarios covered:
 5. API errors without description
 6. Correct headers verification
 7. Requests with and without params
+
+### Example: StateManager Tests
+
+See `tests/services/StateManager.test.ts` for testing file I/O operations:
+- Mocking fs modules with vi.mock()
+- Testing file creation and loading
+- Testing error handling (read errors, invalid JSON, write errors)
+- Testing directory creation
+- Achieving 100% coverage
+
+Key test scenarios covered:
+1. Constructor with default/custom paths
+2. Creating new state file when it doesn't exist
+3. Loading existing state from file
+4. Handling file read errors gracefully
+5. Handling invalid JSON gracefully
+6. Saving state to file
+7. Creating directories when needed
+8. Handling write errors gracefully
+9. Getting and setting offset
+10. Integration: complete load-modify-save cycle
+
+## Mocking File System Operations
+
+For classes that use `fs/promises` and `fs`:
+
+```typescript
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { StateManager } from '../../src/services/StateManager.js';
+
+vi.mock('fs/promises');
+vi.mock('fs');
+
+import { readFile, writeFile, mkdir } from 'fs/promises';
+import { existsSync } from 'fs';
+
+const mockReadFile = vi.mocked(readFile);
+const mockWriteFile = vi.mocked(writeFile);
+const mockMkdir = vi.mocked(mkdir);
+const mockExistsSync = vi.mocked(existsSync);
+
+describe('StateManager', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('should load existing state from file', async () => {
+        const existingState = { offset: 42 };
+        mockExistsSync.mockReturnValue(true);
+        mockReadFile.mockResolvedValue(JSON.stringify(existingState));
+
+        const manager = new StateManager('./data/state.json');
+        await manager.load();
+
+        expect(mockReadFile).toHaveBeenCalledWith('./data/state.json', 'utf-8');
+        expect(manager.getOffset()).toBe(42);
+    });
+
+    it('should handle file read errors gracefully', async () => {
+        mockExistsSync.mockReturnValue(true);
+        mockReadFile.mockRejectedValue(new Error('File read error'));
+
+        const manager = new StateManager('./data/state.json');
+        await manager.load();
+
+        expect(manager.getOffset()).toBe(0);
+    });
+});
+```
 
 ## Common Testing Patterns
 
@@ -317,12 +390,14 @@ We considered but did not use:
 
 When adding tests for other components:
 1. Create test file in `tests/` matching `src/` structure
-2. Use undici MockAgent for any fetch calls
-3. Mock file system operations (`fs/promises`)
+2. Use undici MockAgent for any fetch calls (see TelegramClient example)
+3. Mock file system operations with vi.mock() (see StateManager example)
 4. Mock timers if needed (`vi.useFakeTimers()`)
 5. Don't mock Logger
 6. Aim for 80%+ coverage on critical paths
 7. Test happy path + error scenarios
+8. Reference TelegramClient for HTTP/API testing patterns
+9. Reference StateManager for file I/O testing patterns
 
 ## Troubleshooting
 
@@ -338,6 +413,13 @@ When adding tests for other components:
 **Network error message differs?**
 - undici wraps errors as "fetch failed"
 - Use `.toThrow('fetch failed')` instead of specific error message
+
+**File system mocks not working?**
+- Ensure vi.mock() is called BEFORE importing the mocked modules
+- Import mocked functions AFTER vi.mock() calls
+- Use vi.clearAllMocks() in beforeEach to reset between tests
+- For sync functions (existsSync), use mockReturnValue()
+- For async functions (readFile, writeFile), use mockResolvedValue() or mockRejectedValue()
 
 **Import errors?**
 - Use relative imports: `../../src/module.js`

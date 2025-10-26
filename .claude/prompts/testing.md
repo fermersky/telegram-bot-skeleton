@@ -11,6 +11,7 @@ This project uses **Vitest** with **undici MockAgent** for testing. This documen
 ## Test Setup Summary
 
 ### Dependencies Installed
+
 - `vitest` - Test runner
 - `@vitest/coverage-v8` - Coverage reporting
 - `@vitest/ui` - Optional UI mode
@@ -19,6 +20,7 @@ This project uses **Vitest** with **undici MockAgent** for testing. This documen
 ### Configuration Files
 
 **vitest.config.ts**:
+
 ```typescript
 import { defineConfig } from 'vitest/config';
 
@@ -49,11 +51,12 @@ export default defineConfig({
 ```
 
 **package.json scripts**:
+
 ```json
 {
-  "test": "vitest",
-  "test:coverage": "vitest --coverage",
-  "test:ui": "vitest --ui"
+    "test": "vitest",
+    "test:coverage": "vitest --coverage",
+    "test:ui": "vitest --ui"
 }
 ```
 
@@ -62,6 +65,7 @@ export default defineConfig({
 ### Why undici MockAgent?
 
 We chose undici MockAgent over other options because:
+
 1. **No production code changes** - Works with existing `fetch` calls
 2. **Native to Node.js** - Node 18+ uses undici internally for fetch
 3. **Industry standard** - Best practice in 2025
@@ -127,6 +131,7 @@ describe('TelegramClient', () => {
 ### Mocking Different Scenarios
 
 **Success response**:
+
 ```typescript
 mockPool
     .intercept({
@@ -137,6 +142,7 @@ mockPool
 ```
 
 **API error (ok: false)**:
+
 ```typescript
 mockPool
     .intercept({
@@ -147,6 +153,7 @@ mockPool
 ```
 
 **Network error**:
+
 ```typescript
 mockPool
     .intercept({
@@ -157,6 +164,7 @@ mockPool
 ```
 
 **With request body matching**:
+
 ```typescript
 const params = { chat_id: 123, text: 'Hello' };
 
@@ -183,28 +191,29 @@ Let Logger output naturally during tests. This provides visibility into what's h
 ### Classes That Need Mocking
 
 1. **TelegramClient** - ✅ 100% coverage
-   - Mock fetch using undici MockAgent
-   - Test all public methods
-   - Test error scenarios
+    - Mock fetch using undici MockAgent
+    - Test all public methods
+    - Test error scenarios
 
 2. **StateManager** - ✅ 100% coverage
-   - Mock `fs/promises` and `fs` modules
-   - Test load/save/getOffset/setOffset
-   - Test file creation, directory creation, error handling
+    - Mock `fs/promises` and `fs` modules
+    - Test load/save/getOffset/setOffset
+    - Test file creation, directory creation, error handling
 
 3. **PollingService** - Long-running process
-   - Mock TelegramClient
-   - Mock setTimeout
-   - Test polling loop and error handling
+    - Mock TelegramClient
+    - Mock setTimeout
+    - Test polling loop and error handling
 
 4. **Handlers** - Message routing and processing
-   - Mock TelegramClient
-   - Mock dependencies (StateManager, etc.)
-   - Test message routing logic
+    - Mock TelegramClient
+    - Mock dependencies (StateManager, etc.)
+    - Test message routing logic
 
 ## Test Organization
 
 ### Folder Structure
+
 ```
 tests/
   core/
@@ -222,6 +231,7 @@ tests/
 ```
 
 ### Naming Convention
+
 - Test files: `*.test.ts`
 - Mirror source structure: `src/core/Bot.ts` → `tests/core/Bot.test.ts`
 - Import from source: `import { Bot } from '../../src/core/Bot.js'`
@@ -248,16 +258,17 @@ pnpm test:ui
 - **StateManager**: 100% ✅
 - **Overall target**: 80% (configured in vitest.config.ts)
 - Focus on covering:
-  - All public methods
-  - Error handling paths
-  - Edge cases (empty arrays, null values, etc.)
-  - Request/response validation
+    - All public methods
+    - Error handling paths
+    - Edge cases (empty arrays, null values, etc.)
+    - Request/response validation
 
 ## Reference Implementations
 
 ### Example: TelegramClient Tests
 
 See `tests/core/TelegramClient.test.ts` for testing HTTP/fetch operations:
+
 - Setting up undici MockAgent
 - Testing all public methods
 - Testing error scenarios
@@ -265,6 +276,7 @@ See `tests/core/TelegramClient.test.ts` for testing HTTP/fetch operations:
 - Achieving 100% coverage
 
 Key test scenarios covered:
+
 1. Constructor initialization
 2. Successful API calls (getMe, getUpdates, sendMessage, setMyCommands)
 3. Telegram API errors (ok: false)
@@ -276,6 +288,7 @@ Key test scenarios covered:
 ### Example: StateManager Tests
 
 See `tests/services/StateManager.test.ts` for testing file I/O operations:
+
 - Mocking fs modules with vi.mock()
 - Testing file creation and loading
 - Testing error handling (read errors, invalid JSON, write errors)
@@ -283,6 +296,7 @@ See `tests/services/StateManager.test.ts` for testing file I/O operations:
 - Achieving 100% coverage
 
 Key test scenarios covered:
+
 1. Constructor with default/custom paths
 2. Creating new state file when it doesn't exist
 3. Loading existing state from file
@@ -345,6 +359,7 @@ describe('StateManager', () => {
 ## Common Testing Patterns
 
 ### Testing Async Methods
+
 ```typescript
 it('should do something async', async () => {
     // Setup mocks
@@ -359,6 +374,7 @@ it('should do something async', async () => {
 ```
 
 ### Testing Error Throwing
+
 ```typescript
 it('should throw on error', async () => {
     mockPool.intercept({ ... }).reply(200, { ok: false });
@@ -368,6 +384,7 @@ it('should throw on error', async () => {
 ```
 
 ### Testing Method Calls
+
 ```typescript
 it('should call dependency method', async () => {
     const mockMethod = vi.fn();
@@ -382,6 +399,7 @@ it('should call dependency method', async () => {
 ## Alternative Mocking Approaches (Not Used)
 
 We considered but did not use:
+
 1. **MSW (Mock Service Worker)** - Extra dependency, more setup
 2. **vi.stubGlobal** - Verbose, global state management
 3. **Dependency Injection** - Requires changing production code
@@ -389,6 +407,7 @@ We considered but did not use:
 ## Next Steps for Testing
 
 When adding tests for other components:
+
 1. Create test file in `tests/` matching `src/` structure
 2. Use undici MockAgent for any fetch calls (see TelegramClient example)
 3. Mock file system operations with vi.mock() (see StateManager example)
@@ -402,19 +421,23 @@ When adding tests for other components:
 ## Troubleshooting
 
 **Tests not found?**
+
 - Check `include` pattern in vitest.config.ts
 - Ensure test files end with `.test.ts`
 
 **Fetch not being mocked?**
+
 - Verify MockAgent is set up in beforeEach
 - Check URL in `.intercept()` matches exactly
 - Verify method and headers match
 
 **Network error message differs?**
+
 - undici wraps errors as "fetch failed"
 - Use `.toThrow('fetch failed')` instead of specific error message
 
 **File system mocks not working?**
+
 - Ensure vi.mock() is called BEFORE importing the mocked modules
 - Import mocked functions AFTER vi.mock() calls
 - Use vi.clearAllMocks() in beforeEach to reset between tests
@@ -422,5 +445,6 @@ When adding tests for other components:
 - For async functions (readFile, writeFile), use mockResolvedValue() or mockRejectedValue()
 
 **Import errors?**
+
 - Use relative imports: `../../src/module.js`
 - Include `.js` extension even for TypeScript files

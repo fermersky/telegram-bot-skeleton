@@ -193,9 +193,9 @@ describe('TelegramClient', () => {
                     description: 'Chat not found',
                 });
 
-            await expect(
-                client.sendMessage({ chat_id: 999, text: 'test' })
-            ).rejects.toThrow('Telegram API error: Chat not found');
+            await expect(client.sendMessage({ chat_id: 999, text: 'test' })).rejects.toThrow(
+                'Telegram API error: Chat not found'
+            );
         });
     });
 

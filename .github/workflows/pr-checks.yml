@@ -1,44 +1,44 @@
 name: PR Checks
 
 on:
-  pull_request:
-    branches:
-      - '**'
+    pull_request:
+        branches:
+            - '**'
 
 jobs:
-  test-build-typecheck:
-    runs-on: ubuntu-latest
+    test-build-typecheck:
+        runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v3
+              with:
+                  version: 9
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: 'pnpm'
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: '24'
+                  cache: 'pnpm'
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
 
-      - name: Check code formatting
-        run: pnpm run format:check
+            - name: Check code formatting
+              run: pnpm run format:check
 
-      - name: Run type check & build
-        run: pnpm run build
+            - name: Run type check & build
+              run: pnpm run build
 
-      - name: Run tests
-        run: pnpm run test:coverage
+            - name: Run tests
+              run: pnpm run test:coverage
 
-      - name: Upload coverage reports
-        uses: codecov/codecov-action@v4
-        if: always()
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
+            - name: Upload coverage reports
+              uses: codecov/codecov-action@v4
+              if: always()
+              with:
+                  token: ${{ secrets.CODECOV_TOKEN }}
+                  fail_ci_if_error: false

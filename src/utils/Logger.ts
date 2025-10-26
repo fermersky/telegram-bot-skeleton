@@ -7,9 +7,8 @@ export class Logger {
 
     private formatMessage(level: string, message: any): string {
         const timestamp = new Date().toISOString();
-        const formattedMessage = typeof message === 'object'
-            ? JSON.stringify(message, null, 2)
-            : message;
+        const formattedMessage =
+            typeof message === 'object' ? JSON.stringify(message, null, 2) : message;
         return `[${timestamp}] [${level}] [${this.context}] ${formattedMessage}`;
     }
 

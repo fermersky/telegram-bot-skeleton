@@ -1,6 +1,12 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MockAgent, setGlobalDispatcher, getGlobalDispatcher } from 'undici';
 import { TelegramClient } from '../../src/core/TelegramClient.js';
+
+vi.mock('node:fs/promises');
+vi.mock('node:os');
+
+import { mkdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 
 describe('TelegramClient', () => {
     let client: TelegramClient;
@@ -17,6 +23,12 @@ describe('TelegramClient', () => {
         mockAgent = new MockAgent();
         mockAgent.disableNetConnect();
         setGlobalDispatcher(mockAgent);
+
+        // Clear all mocks
+        vi.clearAllMocks();
+
+        // Mock tmpdir
+        vi.mocked(tmpdir).mockReturnValue('/tmp');
 
         // Create client instance
         client = new TelegramClient(TEST_TOKEN);
@@ -294,6 +306,348 @@ describe('TelegramClient', () => {
                 });
 
             await expect(client.getMe()).resolves.toBeDefined();
+        });
+    });
+
+    describe('getFile', () => {
+        it('should successfully get file information', async () => {
+            const fileId = 'test-file-id-123';
+            const mockFile = {
+                file_id: fileId,
+                file_unique_id: 'unique-123',
+                file_size: 1024,
+                file_path: 'documents/file.pdf',
+            };
+
+            const mockPool = mockAgent.get(BASE_URL);
+            mockPool
+                .intercept({
+                    path: `/bot${TEST_TOKEN}/getFile`,
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ file_id: fileId }),
+                })
+                .reply(200, {
+                    ok: true,
+                    result: mockFile,
+                });
+
+            const result = await client.getFile({ file_id: fileId });
+
+            expect(result).toEqual(mockFile);
+            expect(result.file_id).toBe(fileId);
+            expect(result.file_path).toBe('documents/file.pdf');
+            expect(result.file_size).toBe(1024);
+        });
+
+        it('should throw error when API returns ok: false', async () => {
+            const mockPool = mockAgent.get(BASE_URL);
+            mockPool
+                .intercept({
+                    path: `/bot${TEST_TOKEN}/getFile`,
+                    method: 'POST',
+                })
+                .reply(200, {
+                    ok: false,
+                    description: 'File not found',
+                });
+
+            await expect(client.getFile({ file_id: 'invalid' })).rejects.toThrow(
+                'Telegram API error: File not found'
+            );
+        });
+
+        it('should throw error when network request fails', async () => {
+            const mockPool = mockAgent.get(BASE_URL);
+            mockPool
+                .intercept({
+                    path: `/bot${TEST_TOKEN}/getFile`,
+                    method: 'POST',
+                })
+                .replyWithError(new Error('Network error'));
+
+            await expect(client.getFile({ file_id: 'test' })).rejects.toThrow('fetch failed');
+        });
+    });
+
+    describe('downloadFile', () => {
+        it('should successfully download file to disk', async () => {
+            const filePath = 'documents/file.pdf';
+            const savePath = '/tmp/test-file.pdf';
+            const fileContent = Buffer.from('test file content');
+
+            const mockPool = mockAgent.get(BASE_URL);
+            mockPool
+                .intercept({
+                    path: `/file/bot${TEST_TOKEN}/${filePath}`,
+                    method: 'GET',
+                })
+                .reply(200, fileContent);
+
+            vi.mocked(mkdir).mockResolvedValue(undefined);
+            vi.mocked(writeFile).mockResolvedValue(undefined);
+
+            const result = await client.downloadFile(filePath, savePath);
+
+            expect(result.file_path).toBe(savePath);
+            expect(result.file_size).toBe(fileContent.length);
+            expect(mkdir).toHaveBeenCalledWith('/tmp', { recursive: true });
+            expect(writeFile).toHaveBeenCalledWith(savePath, expect.any(Buffer));
+        });
+
+        it('should throw error on HTTP error response', async () => {
+            const mockPool = mockAgent.get(BASE_URL);
+            mockPool
+                .intercept({
+                    path: `/file/bot${TEST_TOKEN}/documents/file.pdf`,
+                    method: 'GET',
+                })
+                .reply(404, 'Not Found');
+
+            await expect(client.downloadFile('documents/file.pdf', '/tmp/file.pdf')).rejects.toThrow(
+                'Failed to download file'
+            );
+        });
+
+        it('should throw error when network request fails', async () => {
+            const mockPool = mockAgent.get(BASE_URL);
+            mockPool
+                .intercept({
+                    path: `/file/bot${TEST_TOKEN}/documents/file.pdf`,
+                    method: 'GET',
+                })
+                .replyWithError(new Error('Network error'));
+
+            await expect(client.downloadFile('documents/file.pdf', '/tmp/file.pdf')).rejects.toThrow(
+                'fetch failed'
+            );
+        });
+
+        it('should throw error when file write fails', async () => {
+            const fileContent = Buffer.from('test');
+
+            const mockPool = mockAgent.get(BASE_URL);
+            mockPool
+                .intercept({
+                    path: `/file/bot${TEST_TOKEN}/documents/file.pdf`,
+                    method: 'GET',
+                })
+                .reply(200, fileContent);
+
+            vi.mocked(mkdir).mockResolvedValue(undefined);
+            vi.mocked(writeFile).mockRejectedValue(new Error('Write failed'));
+
+            await expect(client.downloadFile('documents/file.pdf', '/tmp/file.pdf')).rejects.toThrow(
+                'Write failed'
+            );
+        });
+    });
+
+    describe('downloadFileById', () => {
+        it('should successfully download with auto-generated path', async () => {
+            const fileId = 'file-123';
+            const mockFile = {
+                file_id: fileId,
+                file_unique_id: 'unique-123',
+                file_size: 1024,
+                file_path: 'documents/report.pdf',
+            };
+            const fileContent = Buffer.from('content');
+
+            const mockPool = mockAgent.get(BASE_URL);
+            mockPool
+                .intercept({
+                    path: `/bot${TEST_TOKEN}/getFile`,
+                    method: 'POST',
+                    body: JSON.stringify({ file_id: fileId }),
+                })
+                .reply(200, {
+                    ok: true,
+                    result: mockFile,
+                });
+
+            mockPool
+                .intercept({
+                    path: `/file/bot${TEST_TOKEN}/documents/report.pdf`,
+                    method: 'GET',
+                })
+                .reply(200, fileContent);
+
+            vi.mocked(mkdir).mockResolvedValue(undefined);
+            vi.mocked(writeFile).mockResolvedValue(undefined);
+
+            const result = await client.downloadFileById(fileId);
+
+            expect(result.file_path).toMatch(/\/tmp\/telegram_file-123_\d+_report\.pdf/);
+            expect(result.file_size).toBe(fileContent.length);
+        });
+
+        it('should successfully download with custom path', async () => {
+            const fileId = 'file-456';
+            const customPath = '/downloads/myfile.pdf';
+            const mockFile = {
+                file_id: fileId,
+                file_unique_id: 'unique-456',
+                file_size: 2048,
+                file_path: 'documents/doc.pdf',
+            };
+            const fileContent = Buffer.from('custom content');
+
+            const mockPool = mockAgent.get(BASE_URL);
+            mockPool
+                .intercept({
+                    path: `/bot${TEST_TOKEN}/getFile`,
+                    method: 'POST',
+                })
+                .reply(200, {
+                    ok: true,
+                    result: mockFile,
+                });
+
+            mockPool
+                .intercept({
+                    path: `/file/bot${TEST_TOKEN}/documents/doc.pdf`,
+                    method: 'GET',
+                })
+                .reply(200, fileContent);
+
+            vi.mocked(mkdir).mockResolvedValue(undefined);
+            vi.mocked(writeFile).mockResolvedValue(undefined);
+
+            const result = await client.downloadFileById(fileId, customPath);
+
+            expect(result.file_path).toBe(customPath);
+            expect(result.file_size).toBe(fileContent.length);
+        });
+
+        it('should throw when file_path is missing', async () => {
+            const mockFile = {
+                file_id: 'file-789',
+                file_unique_id: 'unique-789',
+                file_size: 512,
+            };
+
+            const mockPool = mockAgent.get(BASE_URL);
+            mockPool
+                .intercept({
+                    path: `/bot${TEST_TOKEN}/getFile`,
+                    method: 'POST',
+                })
+                .reply(200, {
+                    ok: true,
+                    result: mockFile,
+                });
+
+            await expect(client.downloadFileById('file-789')).rejects.toThrow(
+                'File path not available in response'
+            );
+        });
+
+        it('should throw when file exceeds 20MB limit', async () => {
+            const MAX_SIZE = 20 * 1024 * 1024;
+            const mockFile = {
+                file_id: 'large-file',
+                file_unique_id: 'unique-large',
+                file_size: MAX_SIZE + 1,
+                file_path: 'documents/large.pdf',
+            };
+
+            const mockPool = mockAgent.get(BASE_URL);
+            mockPool
+                .intercept({
+                    path: `/bot${TEST_TOKEN}/getFile`,
+                    method: 'POST',
+                })
+                .reply(200, {
+                    ok: true,
+                    result: mockFile,
+                });
+
+            await expect(client.downloadFileById('large-file')).rejects.toThrow(
+                'exceeds maximum limit'
+            );
+        });
+
+        it('should allow file at exactly 20MB', async () => {
+            const MAX_SIZE = 20 * 1024 * 1024;
+            const mockFile = {
+                file_id: 'max-file',
+                file_unique_id: 'unique-max',
+                file_size: MAX_SIZE,
+                file_path: 'documents/max.pdf',
+            };
+            const fileContent = Buffer.from('content');
+
+            const mockPool = mockAgent.get(BASE_URL);
+            mockPool
+                .intercept({
+                    path: `/bot${TEST_TOKEN}/getFile`,
+                    method: 'POST',
+                })
+                .reply(200, {
+                    ok: true,
+                    result: mockFile,
+                });
+
+            mockPool
+                .intercept({
+                    path: `/file/bot${TEST_TOKEN}/documents/max.pdf`,
+                    method: 'GET',
+                })
+                .reply(200, fileContent);
+
+            vi.mocked(mkdir).mockResolvedValue(undefined);
+            vi.mocked(writeFile).mockResolvedValue(undefined);
+
+            await expect(client.downloadFileById('max-file')).resolves.toBeDefined();
+        });
+
+        it('should propagate getFile errors', async () => {
+            const mockPool = mockAgent.get(BASE_URL);
+            mockPool
+                .intercept({
+                    path: `/bot${TEST_TOKEN}/getFile`,
+                    method: 'POST',
+                })
+                .reply(200, {
+                    ok: false,
+                    description: 'Invalid file_id',
+                });
+
+            await expect(client.downloadFileById('invalid-id')).rejects.toThrow(
+                'Telegram API error: Invalid file_id'
+            );
+        });
+
+        it('should propagate downloadFile errors', async () => {
+            const mockFile = {
+                file_id: 'file-error',
+                file_unique_id: 'unique-error',
+                file_size: 1024,
+                file_path: 'documents/error.pdf',
+            };
+
+            const mockPool = mockAgent.get(BASE_URL);
+            mockPool
+                .intercept({
+                    path: `/bot${TEST_TOKEN}/getFile`,
+                    method: 'POST',
+                })
+                .reply(200, {
+                    ok: true,
+                    result: mockFile,
+                });
+
+            mockPool
+                .intercept({
+                    path: `/file/bot${TEST_TOKEN}/documents/error.pdf`,
+                    method: 'GET',
+                })
+                .replyWithError(new Error('Download failed'));
+
+            await expect(client.downloadFileById('file-error')).rejects.toThrow('fetch failed');
         });
     });
 });

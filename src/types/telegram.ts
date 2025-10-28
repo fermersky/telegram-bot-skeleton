@@ -16,6 +16,14 @@ export interface Chat {
     last_name?: string;
 }
 
+export interface PhotoSize {
+    file_id: string;
+    file_unique_id: string;
+    width: number;
+    height: number;
+    file_size?: number;
+}
+
 export interface Document {
     file_name: string;
     mime_type: string;
@@ -44,6 +52,7 @@ export interface Message {
     chat: Chat;
     date: number;
     text?: string;
+    photo?: PhotoSize[];
     document?: Document;
     entities?: MessageEntity[];
 }
@@ -96,4 +105,20 @@ export interface TelegramResponse<T> {
 
 export interface BotState {
     offset: number;
+}
+
+export interface File {
+    file_id: string;
+    file_unique_id: string;
+    file_size?: number;
+    file_path?: string;
+}
+
+export interface GetFileParams {
+    file_id: string;
+}
+
+export interface DownloadFileResult {
+    file_path: string;
+    file_size: number;
 }

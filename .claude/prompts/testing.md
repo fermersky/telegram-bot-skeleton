@@ -278,12 +278,15 @@ See `tests/core/TelegramClient.test.ts` for testing HTTP/fetch operations:
 Key test scenarios covered:
 
 1. Constructor initialization
-2. Successful API calls (getMe, getUpdates, sendMessage, setMyCommands)
-3. Telegram API errors (ok: false)
-4. Network errors (fetch fails)
-5. API errors without description
-6. Correct headers verification
-7. Requests with and without params
+2. Successful API calls (getMe, getUpdates, sendMessage, setMyCommands, getFile)
+3. File download operations (downloadFile, downloadFileById)
+4. Telegram API errors (ok: false)
+5. Network errors (fetch fails)
+6. API errors without description
+7. Correct headers verification
+8. Requests with and without params
+9. File system operations (mkdir, writeFile)
+10. File size validation (20MB limit)
 
 ### Example: StateManager Tests
 
@@ -355,6 +358,220 @@ describe('StateManager', () => {
     });
 });
 ```
+
+## Testing File Downloads
+
+### Overview
+
+File download testing requires mocking both HTTP requests (for API and file downloads) and file system operations (mkdir, writeFile). The TelegramClient file download tests demonstrate this pattern.
+
+### Setup Pattern
+
+```typescript
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { MockAgent, setGlobalDispatcher, getGlobalDispatcher } from 'undici';
+import { TelegramClient } from '../../src/core/TelegramClient.js';
+
+vi.mock('node:fs/promises');
+vi.mock('node:os');
+
+import { mkdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+
+describe('File Downloads', () => {
+    let client: TelegramClient;
+    let mockAgent: MockAgent;
+
+    beforeEach(() => {
+        mockAgent = new MockAgent();
+        mockAgent.disableNetConnect();
+        setGlobalDispatcher(mockAgent);
+
+        vi.clearAllMocks();
+        vi.mocked(tmpdir).mockReturnValue('/tmp');
+
+        client = new TelegramClient('test-token');
+    });
+
+    afterEach(async () => {
+        await mockAgent.close();
+        setGlobalDispatcher(originalDispatcher);
+    });
+});
+```
+
+### Testing getFile API Call
+
+```typescript
+it('should get file information', async () => {
+    const mockFile = {
+        file_id: 'test-file-id',
+        file_unique_id: 'unique-123',
+        file_size: 1024,
+        file_path: 'documents/file.pdf',
+    };
+
+    const mockPool = mockAgent.get('https://api.telegram.org');
+    mockPool
+        .intercept({
+            path: '/bottest-token/getFile',
+            method: 'POST',
+            body: JSON.stringify({ file_id: 'test-file-id' }),
+        })
+        .reply(200, {
+            ok: true,
+            result: mockFile,
+        });
+
+    const result = await client.getFile({ file_id: 'test-file-id' });
+
+    expect(result.file_path).toBe('documents/file.pdf');
+    expect(result.file_size).toBe(1024);
+});
+```
+
+### Testing File Download
+
+```typescript
+it('should download file to disk', async () => {
+    const filePath = 'documents/file.pdf';
+    const savePath = '/tmp/test-file.pdf';
+    const fileContent = Buffer.from('test file content');
+
+    // Mock file download endpoint
+    const mockPool = mockAgent.get('https://api.telegram.org');
+    mockPool
+        .intercept({
+            path: `/file/bottest-token/${filePath}`,
+            method: 'GET',
+        })
+        .reply(200, fileContent);
+
+    // Mock file system operations
+    vi.mocked(mkdir).mockResolvedValue(undefined);
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+
+    const result = await client.downloadFile(filePath, savePath);
+
+    expect(result.file_path).toBe(savePath);
+    expect(result.file_size).toBe(fileContent.length);
+    expect(mkdir).toHaveBeenCalledWith('/tmp', { recursive: true });
+    expect(writeFile).toHaveBeenCalledWith(savePath, expect.any(Buffer));
+});
+```
+
+### Testing Combined Operations (downloadFileById)
+
+```typescript
+it('should get file info and download', async () => {
+    const fileId = 'file-123';
+    const mockFile = {
+        file_id: fileId,
+        file_size: 1024,
+        file_path: 'documents/report.pdf',
+    };
+    const fileContent = Buffer.from('content');
+
+    const mockPool = mockAgent.get('https://api.telegram.org');
+
+    // Mock getFile API call
+    mockPool
+        .intercept({
+            path: '/bottest-token/getFile',
+            method: 'POST',
+            body: JSON.stringify({ file_id: fileId }),
+        })
+        .reply(200, { ok: true, result: mockFile });
+
+    // Mock file download
+    mockPool
+        .intercept({
+            path: '/file/bottest-token/documents/report.pdf',
+            method: 'GET',
+        })
+        .reply(200, fileContent);
+
+    vi.mocked(mkdir).mockResolvedValue(undefined);
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+
+    const result = await client.downloadFileById(fileId);
+
+    expect(result.file_path).toMatch(/\/tmp\/telegram_file-123_\d+_report\.pdf/);
+    expect(result.file_size).toBe(fileContent.length);
+});
+```
+
+### Testing File Size Validation
+
+```typescript
+it('should reject files over 20MB', async () => {
+    const MAX_SIZE = 20 * 1024 * 1024;
+    const mockFile = {
+        file_id: 'large-file',
+        file_size: MAX_SIZE + 1,
+        file_path: 'documents/large.pdf',
+    };
+
+    const mockPool = mockAgent.get('https://api.telegram.org');
+    mockPool
+        .intercept({
+            path: '/bottest-token/getFile',
+            method: 'POST',
+        })
+        .reply(200, { ok: true, result: mockFile });
+
+    await expect(client.downloadFileById('large-file')).rejects.toThrow(
+        'exceeds maximum limit'
+    );
+});
+```
+
+### Testing Error Scenarios
+
+```typescript
+it('should handle HTTP errors', async () => {
+    const mockPool = mockAgent.get('https://api.telegram.org');
+    mockPool
+        .intercept({
+            path: '/file/bottest-token/documents/file.pdf',
+            method: 'GET',
+        })
+        .reply(404, 'Not Found');
+
+    await expect(
+        client.downloadFile('documents/file.pdf', '/tmp/file.pdf')
+    ).rejects.toThrow('Failed to download file');
+});
+
+it('should handle file write errors', async () => {
+    const fileContent = Buffer.from('test');
+    const mockPool = mockAgent.get('https://api.telegram.org');
+    mockPool
+        .intercept({
+            path: '/file/bottest-token/documents/file.pdf',
+            method: 'GET',
+        })
+        .reply(200, fileContent);
+
+    vi.mocked(mkdir).mockResolvedValue(undefined);
+    vi.mocked(writeFile).mockRejectedValue(new Error('Write failed'));
+
+    await expect(
+        client.downloadFile('documents/file.pdf', '/tmp/file.pdf')
+    ).rejects.toThrow('Write failed');
+});
+```
+
+### Key Patterns for File Download Tests
+
+1. **Mock both API calls**: Use undici MockAgent for both getFile and file download URLs
+2. **Mock file system**: Use vi.mock() for fs/promises (mkdir, writeFile) and os (tmpdir)
+3. **Binary data**: Use Buffer.from() for file content in mocks
+4. **Multiple interceptors**: Chain getFile API → file download URL for combined operations
+5. **Verify fs calls**: Assert mkdir and writeFile called with correct parameters
+6. **Path validation**: Use regex for auto-generated paths with timestamps
+7. **Size limits**: Test edge cases (exactly 20MB, over 20MB, missing size)
+8. **Error propagation**: Verify errors from API, network, and fs operations are handled
 
 ## Common Testing Patterns
 

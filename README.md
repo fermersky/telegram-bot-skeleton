@@ -6,6 +6,7 @@ A custom Telegram bot built with Node.js 24+, TypeScript, and OOP principles. No
 
 - Custom Telegram API client using native fetch
 - Long polling implementation with automatic offset management
+- File download support for documents and photos (up to 20MB)
 - File-based state persistence
 - OOP architecture with clean separation of concerns
 - PM2 support for production deployment
@@ -154,7 +155,14 @@ commandHandler.registerCommand('custom', 'Description of your command', async (m
 
 ### TelegramClient
 
-Low-level class that handles HTTP communication with the Telegram Bot API using the native fetch API.
+Low-level class that handles HTTP communication with the Telegram Bot API using the native fetch API. Supports all core bot operations including message handling and file downloads.
+
+**File Download Methods:**
+- `getFile(file_id)` - Get file metadata from Telegram
+- `downloadFile(file_path, save_path)` - Download file to disk
+- `downloadFileById(file_id, save_path?)` - Convenience method combining both operations
+
+Files are automatically downloaded to the OS temp directory when sent to the bot. Supports documents and photos up to 20MB (Bot API limitation).
 
 ### PollingService
 
